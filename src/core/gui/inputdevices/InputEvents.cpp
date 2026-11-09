@@ -7,6 +7,7 @@
 #include "control/settings/Settings.h"       // for Settings
 #include "control/settings/SettingsEnums.h"  // for InputDeviceTypeOption
 #include "util/Point.h"
+#include "util/QuartzInputPrecision.h"  // for xoj::util::quartz::getSubpixelOffset
 #include "util/gdk4_helper.h"
 
 static auto translateEventType(GdkEventType type) -> InputEventType {
@@ -82,7 +83,16 @@ auto InputEvents::translateEvent(GdkEvent* sourceEvent, Settings* settings,
     targetEvent.deviceId = DeviceId(targetEvent.device);
 
     // Copy both coordinates of the event
-    gdk_event_get_coords(sourceEvent, &targetEvent.absolute.x, &targetEvent.absolute.y);
+    const bool hasCoords = gdk_event_get_coords(sourceEvent, &targetEvent.absolute.x, &targetEvent.absolute.y);
+    // On macOS, the Quartz backend of GDK truncates the event coordinates to whole pixels, which makes
+    // strokes jagged (https://github.com/xournalpp/xournalpp/issues/5451). Add back the sub-pixel part
+    // recorded from the native event.
+    double fracX = 0.0;
+    double fracY = 0.0;
+    if (hasCoords && xoj::util::quartz::getSubpixelOffset(sourceEvent, fracX, fracY)) {
+        targetEvent.absolute.x += fracX;
+        targetEvent.absolute.y += fracY;
+    }
     targetEvent.relative = targetEvent.absolute + relativeOffset;
 
     // Copy the event button if there is any

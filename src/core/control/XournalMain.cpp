@@ -37,6 +37,7 @@
 #include "undo/UndoRedoHandler.h"            // for UndoRedoHandler
 #include "util/PathUtil.h"                   // for getConfigFolder, openFil...
 #include "util/PlaceholderString.h"          // for PlaceholderString
+#include "util/QuartzInputPrecision.h"       // for quartz::installEventFilter
 #include "util/Util.h"                       // for execInUiThread
 #include "util/VersionInfo.h"                // for getVersionInfo
 #include "util/XojMsgBox.h"                  // for XojMsgBox
@@ -606,6 +607,9 @@ auto XournalMain::run(int argc, char** argv) -> int {
 
     XournalMainPrivate app_data;
     GtkApplication* app = gtk_application_new("com.github.xournalpp.xournalpp", APP_FLAGS);
+    // On macOS, observe the native events to recover sub-pixel pointer positions lost by GDK's Quartz
+    // backend (https://github.com/xournalpp/xournalpp/issues/5451). No-op on other platforms.
+    xoj::util::quartz::installEventFilter();
     g_object_set(G_OBJECT(app), "register-session", true, nullptr);  // Needed for opening files on MacOS from Finder
     g_set_prgname("com.github.xournalpp.xournalpp");
     g_signal_connect(app, "activate", G_CALLBACK(&on_activate), &app_data);

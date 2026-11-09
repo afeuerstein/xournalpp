@@ -11,3 +11,9 @@ target_compile_features(util PUBLIC ${PROJECT_CXX_FEATURES})
 target_compile_features(util PUBLIC cxx_std_20)
 target_include_directories(util PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 add_library(xoj::util ALIAS util)
+
+if (APPLE)
+  # QuartzInputPrecision.cpp reads native NSEvent data through the Objective-C runtime
+  find_library(XOJ_OBJC_LIBRARY objc REQUIRED)
+  target_link_libraries(util PUBLIC ${XOJ_OBJC_LIBRARY})
+endif()
