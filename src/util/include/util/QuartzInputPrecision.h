@@ -13,6 +13,8 @@
 
 #include <gdk/gdk.h>
 
+#include <string>
+
 namespace xoj::util::quartz {
 
 #if defined(__APPLE__) && defined(GDK_WINDOWING_QUARTZ)
@@ -37,11 +39,28 @@ void installEventFilter();
  */
 bool getSubpixelOffset(GdkEvent* event, double& fracX, double& fracY);
 
+/**
+ * @brief Read the data of a clipboard target directly from the macOS pasteboard.
+ *
+ * On macOS 11+, GDK's Quartz backend stores custom targets under a dynamic UTI (e.g. "application/xournal"
+ * becomes "dyn.ah62..."), while requests by the literal target name find nothing: a same-process
+ * gtk_clipboard_request_contents() for a custom target returns zero bytes. This helper iterates the
+ * pasteboard's declared types, matches the one whose UTType preferred MIME type (or name) equals
+ * @p targetName, and returns its data.
+ *
+ * @param targetName The GDK target name (e.g. "application/xournal")
+ * @param out[out] The raw target data, if found
+ * @return true if data for the target was found on the general pasteboard
+ */
+bool getClipboardDataForTarget(const char* targetName, std::string& out);
+
 #else
 
 inline void installEventFilter() {}
 
 inline bool getSubpixelOffset(GdkEvent*, double&, double&) { return false; }
+
+inline bool getClipboardDataForTarget(const char*, std::string&) { return false; }
 
 #endif
 

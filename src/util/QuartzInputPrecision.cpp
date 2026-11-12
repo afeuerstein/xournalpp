@@ -15,6 +15,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <mutex>
 #include <unordered_map>
 
@@ -139,6 +140,73 @@ bool getSubpixelOffset(GdkEvent* event, double& fracX, double& fracY) {
     fracX = x - std::trunc(x);
     fracY = y - std::trunc(y);
     return true;
+}
+
+
+bool getClipboardDataForTarget(const char* targetName, std::string& out) {
+    if (targetName == nullptr) {
+        return false;
+    }
+    static const SEL generalPasteboardSel = sel_registerName("generalPasteboard");
+    static const SEL typesSel = sel_registerName("types");
+    static const SEL countSel = sel_registerName("count");
+    static const SEL objectAtIndexSel = sel_registerName("objectAtIndex:");
+    static const SEL utf8StringSel = sel_registerName("UTF8String");
+    static const SEL dataForTypeSel = sel_registerName("dataForType:");
+    static const SEL lengthSel = sel_registerName("length");
+    static const SEL bytesSel = sel_registerName("bytes");
+    static const SEL typeWithIdentifierSel = sel_registerName("typeWithIdentifier:");
+    static const SEL preferredMIMETypeSel = sel_registerName("preferredMIMEType");
+
+    const Class pbClass = objc_getClass("NSPasteboard");
+    if (pbClass == nil) {
+        return false;
+    }
+    const id pb = objcSendId(reinterpret_cast<id>(pbClass), generalPasteboardSel);
+    if (pb == nil) {
+        return false;
+    }
+    const id types = objcSendId(pb, typesSel);
+    if (types == nil) {
+        return false;
+    }
+    const Class utTypeClass = objc_getClass("UTType");  // macOS 11+
+    const unsigned long n = reinterpret_cast<unsigned long (*)(id, SEL)>(objc_msgSend)(types, countSel);
+    for (unsigned long i = 0; i < n; i++) {
+        const id type = reinterpret_cast<id (*)(id, SEL, unsigned long)>(objc_msgSend)(types, objectAtIndexSel, i);
+        if (type == nil) {
+            continue;
+        }
+        const char* typeCStr = reinterpret_cast<const char* (*)(id, SEL)>(objc_msgSend)(type, utf8StringSel);
+        bool match = typeCStr != nullptr && std::strcmp(targetName, typeCStr) == 0;
+        if (!match && utTypeClass != nil) {
+            // A custom GDK target is stored under a dynamic UTI whose preferred MIME type is the
+            // target name (this is how GDK maps pasteboard types back to atoms for the TARGETS list)
+            const id ut = reinterpret_cast<id (*)(id, SEL, id)>(objc_msgSend)(reinterpret_cast<id>(utTypeClass), typeWithIdentifierSel, type);
+            if (ut != nil) {
+                const id mime = objcSendId(ut, preferredMIMETypeSel);
+                if (mime != nil) {
+                    const char* mimeCStr = reinterpret_cast<const char* (*)(id, SEL)>(objc_msgSend)(mime, utf8StringSel);
+                    match = mimeCStr != nullptr && std::strcmp(targetName, mimeCStr) == 0;
+                }
+            }
+        }
+        if (!match) {
+            continue;
+        }
+        const id data = reinterpret_cast<id (*)(id, SEL, id)>(objc_msgSend)(pb, dataForTypeSel, type);
+        if (data == nil) {
+            return false;
+        }
+        const unsigned long len = reinterpret_cast<unsigned long (*)(id, SEL)>(objc_msgSend)(data, lengthSel);
+        const void* bytes = reinterpret_cast<const void* (*)(id, SEL)>(objc_msgSend)(data, bytesSel);
+        if (bytes == nullptr || len == 0) {
+            return false;
+        }
+        out.assign(static_cast<const char*>(bytes), len);
+        return true;
+    }
+    return false;
 }
 
 }  // namespace xoj::util::quartz

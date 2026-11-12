@@ -14,6 +14,7 @@
 #include "model/Text.h"                           // for Text
 #include "util/Util.h"                            // for DPI_NORMALIZATION_F...
 #include "util/gtk4_helper.h"                     // for gtk_widget_get_clipboard
+#include "util/QuartzInputPrecision.h"          // for quartz::getClipboardDataForTarget
 #include "util/safe_casts.h"                      // for as_unsigned
 #include "util/serializing/BinObjectEncoding.h"   // for BinObjectEncoding
 #include "util/serializing/ObjectInputStream.h"   // for ObjectInputStream
@@ -315,6 +316,21 @@ void ClipboardHandler::receivedClipboardContents(GtkClipboard* clipboard, GtkSel
 void ClipboardHandler::dispatchPaste() {
     // Priority: xournal native format > text > image
     if (this->containsXournal) {
+        // On macOS 11+, GDK's Quartz backend stores the custom "application/xournal" target under a
+        // dynamic UTI, so a same-process gtk_clipboard_request_contents() for the atom returns zero
+        // bytes. Read the data directly from the pasteboard in that case.
+        std::string clipboardData;
+        gchar* targetName = gdk_atom_name(atomXournal);
+        const bool haveData =
+                xoj::util::quartz::getClipboardDataForTarget(targetName, clipboardData) && !clipboardData.empty();
+        g_free(targetName);
+        if (haveData) {
+            ObjectInputStream in;
+            if (in.read(clipboardData.data(), clipboardData.size())) {
+                this->listener->clipboardPasteXournal(in);
+                return;
+            }
+        }
         gtk_clipboard_request_contents(this->clipboard, atomXournal,
                                        reinterpret_cast<GtkClipboardReceivedFunc>(pasteClipboardContents), this);
     } else if (this->containsText) {
